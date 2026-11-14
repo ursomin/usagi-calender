@@ -1,0 +1,46 @@
+{
+  "name": "bunny-calendar",
+  "version": "0.1.0",
+  "private": true,
+  "description": "버터 옐로우 테마의 데스크톱 캘린더",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron .",
+    "preview:build": "node scripts/build-preview.js",
+    "build:win": "electron-builder --win --x64",
+    "build:portable": "electron-builder --win portable --x64"
+  },
+  "devDependencies": {
+    "electron": "^39.0.0",
+    "electron-builder": "^26.0.0"
+  },
+  "build": {
+    "appId": "com.gmkim.bunnycalendar",
+    "productName": "Bunny Calendar",
+    "files": [
+      "main.js",
+      "preload.js",
+      "src/**/*",
+      "package.json"
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true
+    },
+    "asar": true
+  },
+  "overrides": {
+    "yauzl": "^3.3.1"
+  }
+}
