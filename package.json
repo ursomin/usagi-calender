@@ -24,10 +24,14 @@
       "src/**/*",
       "package.json"
     ],
+    "extraResources": [
+      { "from": ".env", "to": "app.env" }
+    ],
     "directories": {
       "output": "dist"
     },
     "win": {
+      "icon": "src/assets/usagi.ico",
       "target": [
         "nsis",
         "portable"
@@ -37,6 +41,9 @@
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true
+    },
+    "portable": {
+      "artifactName": "Usagi-Calendar.exe"
     },
     "asar": true
   },

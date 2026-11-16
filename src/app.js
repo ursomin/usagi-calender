@@ -62,6 +62,31 @@ const state = {
 };
 let memoTimer;
 let toastTimer;
+const holidayAttempts = new Set();
+const holidayErrors = new Map();
+function updateHolidayStatus() {
+  const id = `${state.year}-${state.month + 1}`;
+  const entry = HolidayService.entry(state.year, state.month + 1);
+  $('holiday-status').textContent = holidayErrors.has(id)
+    ? (entry ? '저장된 공휴일 표시 중 · 업데이트 실패' : '공휴일 조회 실패 · 앱을 다시 열어 주세요.')
+    : '';
+  $('holiday-status').title = holidayErrors.get(id) || '';
+}
+async function loadHolidays() {
+  const year = state.year, month = state.month + 1, id = `${year}-${month}`;
+  const entry = HolidayService.entry(year, month);
+  updateHolidayStatus();
+  if (!HolidayService.isConfigured() || holidayAttempts.has(id) || (entry && Date.now() - entry.updated < 86400000)) return;
+  holidayAttempts.add(id);
+  try {
+    const items = await HolidayService.request(year, month);
+    HolidayService.store(year, month, items); holidayErrors.delete(id);
+    if (year === state.year && month === state.month + 1) { renderCalendar(); renderDayPanel(); }
+  } catch (error) {
+    holidayErrors.set(id, error.message);
+    if (year === state.year && month === state.month + 1) updateHolidayStatus();
+  }
+}
 
 function persist() {
   if (demo) return;
@@ -93,7 +118,11 @@ function occursOn(event, targetString) {
   const interval = Math.max(1, Math.min(99, Number(r.interval) || 1));
   const daysApart = Math.round((dateUTC(target) - dateUTC(origin)) / 86400000);
   if (type === 'daily') return daysApart % interval === 0;
-  if (type === 'weekly') return daysApart % (7 * interval) === 0;
+  if (type === 'weekly') {
+    const weekdays = Array.isArray(r.weekdays) && r.weekdays.length ? r.weekdays : [origin.getDay()];
+    const weekOffset = Math.floor((dateUTC(target) - dateUTC(new Date(origin.getFullYear(), origin.getMonth(), origin.getDate() - origin.getDay()))) / (7 * 86400000));
+    return weekdays.includes(target.getDay()) && weekOffset % interval === 0;
+  }
   if (type === 'monthly') {
     const monthsApart = (target.getFullYear()-origin.getFullYear()) * 12 + target.getMonth()-origin.getMonth();
     return monthsApart % interval === 0 && target.getDate() === origin.getDate();
@@ -103,7 +132,7 @@ function occursOn(event, targetString) {
   return false;
 }
 function dayEvents(dateStr) {
-  return state.events.filter(e => state.filters[e.category] && occursOn(e,dateStr))
+  return state.events.filter(e => occursOn(e,dateStr))
     .sort((a,b) => (a.allDay ? '00:00' : a.start).localeCompare(b.allDay ? '00:00' : b.start) || a.title.localeCompare(b.title,'ko'));
 }
 function repeatLabel(r) {
@@ -112,6 +141,7 @@ function repeatLabel(r) {
   const n = r.type === 'custom' ? Math.max(1,Number(r.interval) || 1) : 1;
   const units = {daily:'일',weekly:'주',monthly:'개월',yearly:'년'};
   if (!units[type]) return '사용자 지정';
+  if (type === 'weekly' && Array.isArray(r.weekdays) && r.weekdays.length) return `매주 ${r.weekdays.slice().sort((a,b)=>a-b).map(day=>['일','월','화','수','목','금','토'][day]).join('·')}`;
   return n === 1 ? ({daily:'매일',weekly:'매주',monthly:'매월',yearly:'매년'}[type]) : `${n}${units[type]}마다`;
 }
 function renderFilters() {
@@ -131,7 +161,9 @@ function renderFilters() {
   }
 }
 function renderCalendar() {
-  $('month-title').textContent = `${state.year}년 ${state.month + 1}월`;
+  loadHolidays();
+  $('calendar-year').textContent = `${state.year}년`;
+  $('month-title').textContent = `${state.month + 1}월`;
   const grid = $('calendar-grid'); grid.replaceChildren();
   for(let i=0;i<7;i++) {
     const heading = el('div',`weekday${i===0?' sunday':''}${i===6?' saturday':''}`,WEEKDAY_LABELS[i]);
@@ -151,25 +183,30 @@ function renderCalendar() {
     cell.dataset.date=date;
     if(date===state.selected)cell.classList.add('selected');
     if(date===toISO(new Date()))cell.classList.add('today');
-    const num=el('span','day-number'+(date===state.selected?' is-selected-number':''),String(day));cell.append(num);
+    const dateHeading=el('div','day-date');
+    const num=el('span','day-number'+(date===state.selected?' is-selected-number':''),String(day));dateHeading.append(num);cell.append(dateHeading);
+    const holiday = HolidayService.names(date);
+    if (holiday) {
+      cell.classList.add('public-holiday');
+      const label = el('span', 'holiday-name', holiday); label.title = holiday; dateHeading.append(label);
+    }
     const eventBox=el('div','cell-events');
     const events=dayEvents(date);
-    const maxVisible=weeks === 6 ? 1 : 2;
-    for(const e of events.slice(0,maxVisible)) {
+    for(const e of events) {
       const cat=CATEGORIES[e.category];
       const pill=el('button',`event-pill ${cat.css}`);
       pill.type='button';pill.title=e.title.replaceAll('\n',' ')+' (더블클릭하여 수정)';
-      const mark=el('span','pill-mark',cat.icon);
+      const mark=icon({church:'church',work:'work',personal:'calendar'}[e.category]);
+      mark.classList.add('pill-mark');
       pill.append(mark,document.createTextNode(e.title));
       pill.addEventListener('click',evt=>{evt.stopPropagation();selectDate(date);});
       pill.addEventListener('dblclick',evt=>{evt.stopPropagation();openEditor(e);});
       eventBox.append(pill);
     }
-    if(events.length>maxVisible)eventBox.append(el('span','extra-events',`+${events.length-maxVisible}개 더`));
     cell.append(eventBox);
     cell.tabIndex=0;
     cell.setAttribute('role','button');
-    cell.setAttribute('aria-label',`${state.month + 1}월 ${day}일, 일정 ${events.length}개. 더블클릭하여 추가`);
+    cell.setAttribute('aria-label',`${state.month + 1}월 ${day}일, ${holiday ? holiday + ', ' : ''}일정 ${events.length}개. 더블클릭하여 추가`);
     cell.addEventListener('click',()=>selectDate(date));
     cell.addEventListener('dblclick',()=>openEditor(null,date,false));
     cell.addEventListener('keydown',e=>{
@@ -188,6 +225,13 @@ function selectDate(date) {
 function renderDayPanel() {
   const d=fromISO(state.selected);
   $('selected-date-title').textContent=`${d.getMonth()+1}월 ${d.getDate()}일 (${WEEKDAY_LABELS[d.getDay()]})`;
+  let holidayLabel = $('selected-holiday');
+  if (!holidayLabel) {
+    holidayLabel = el('div', 'selected-holiday'); holidayLabel.id = 'selected-holiday';
+    document.querySelector('.day-heading').after(holidayLabel);
+  }
+  holidayLabel.textContent = HolidayService.names(state.selected);
+  holidayLabel.hidden = !holidayLabel.textContent;
   const events=dayEvents(state.selected);
   $('day-count-label').textContent=`이날의 일정 ${events.length}개`;
   const container=$('day-events');container.replaceChildren();
@@ -203,7 +247,7 @@ function renderDayPanel() {
     const article=el('article',`detail-event ${cat.css}`);
     article.tabIndex=0;article.setAttribute('role','button');article.setAttribute('aria-label',`${e.title} 수정`);
     const heading=el('div','detail-title');
-    const categoryIcon=icon({church:'church',work:'work',personal:'heart'}[e.category]);
+    const categoryIcon=icon({church:'church',work:'work',personal:'calendar'}[e.category]);
     categoryIcon.classList.add('detail-symbol');
     heading.append(categoryIcon,el('h3','',e.title),el('span','detail-category',cat.name));
     const when=el('div','detail-meta');when.append(icon('clock'),el('span','',e.allDay?'하루 종일':`${e.start} ~ ${e.end}`));
@@ -220,27 +264,56 @@ function renderDayPanel() {
   }
 }
 function updateRepeatFields() {
-  const type=$('event-repeat').value;
-  $('repeat-details').hidden = type!=='custom';
-  $('until-row').hidden = type==='none';
+  const days=Array.from(document.querySelectorAll('#repeat-weekdays button[aria-pressed="true"]'),button=>Number(button.dataset.weekday));
+  $('repeat-state').textContent=days.length ? `매주 ${days.sort((a,b)=>a-b).map(day=>['일','월','화','수','목','금','토'][day]).join(' · ')}` : '안 함';
+  $('repeat-end-toggle').hidden=!days.length;
+}
+function timeToMinutes(value) { const [hours, minutes] = value.split(':').map(Number); return hours * 60 + minutes; }
+function minutesToTime(value) { return `${pad2(Math.floor(value / 60))}:${pad2(value % 60)}`; }
+function formatTime(value) {
+  const hours = Math.floor(value / 60), minutes = value % 60;
+  return `${hours < 12 ? '오전' : '오후'} ${hours % 12 || 12}:${pad2(minutes)}`;
+}
+function updateTimeRange(changed, source = 'range') {
+  const start = $('range-start'), end = $('range-end');
+  let startValue = Number(start.value), endValue = Number(end.value);
+  if (source === 'range') {
+    if (changed === start && startValue > endValue) end.value = String(endValue = startValue);
+    if (changed === end && endValue < startValue) start.value = String(startValue = endValue);
+    $('event-start').value = minutesToTime(startValue);
+    $('event-end').value = minutesToTime(endValue);
+  } else {
+    startValue = timeToMinutes($('event-start').value);
+    endValue = timeToMinutes($('event-end').value);
+    if (changed === $('event-start') && startValue > endValue) { endValue = startValue; $('event-end').value = minutesToTime(endValue); }
+    if (changed === $('event-end') && endValue < startValue) { startValue = endValue; $('event-start').value = minutesToTime(startValue); }
+    start.value = String(startValue); end.value = String(endValue);
+  }
+  const left = startValue / 1430 * 100, right = endValue / 1430 * 100;
+  $('time-range-fill').style.left = `${left}%`;
+  $('time-range-fill').style.width = `${right-left}%`;
 }
 function updateAllDay() { $('time-fields').hidden = $('event-allday').checked; }
-function openEditor(event=null, date=state.selected, isRepeat=false) {
+function openEditor(event=null, date=state.selected) {
   $('event-form').reset();
   $('event-id').value=event?.id||'';
-  $('dialog-title').textContent=event?'일정 수정하기':isRepeat?'반복 일정 추가':'새 일정 추가';
+  $('dialog-title').textContent=event?'일정 수정하기':'새 일정 추가';
   $('event-name').value=event?.title||'';
   $('event-date').value=event?.date||date;
   $('event-category').value=event?.category||'personal';
   $('event-allday').checked=event?.allDay??false;
   $('event-start').value=event?.start||'10:00';
   $('event-end').value=event?.end||'11:00';
-  $('event-repeat').value=event?.repeat?.type||(isRepeat?'weekly':'none');
-  $('repeat-interval').value=event?.repeat?.interval||1;
-  $('repeat-unit').value=event?.repeat?.unit||'weekly';
   $('repeat-until').value=event?.repeat?.until||'';
+  const weeklyDays = event?.repeat?.type==='weekly' ? (event.repeat.weekdays || [fromISO(event.date).getDay()]) : [];
+  document.querySelectorAll('#repeat-weekdays button').forEach(button => {
+    button.setAttribute('aria-pressed', String(weeklyDays.includes(Number(button.dataset.weekday))));
+  });
+  $('until-row').hidden = !event?.repeat?.until || !weeklyDays.length;
+  $('repeat-end-toggle').setAttribute('aria-expanded', String(Boolean(event?.repeat?.until)));
+  $('repeat-end-toggle').querySelector('span').textContent = event?.repeat?.until ? '−' : '＋';
   $('event-delete').hidden=!event;
-  updateAllDay();updateRepeatFields();
+  updateAllDay();updateRepeatFields();updateTimeRange();
   $('event-dialog').showModal();
   $('event-name').focus();
 }
@@ -254,21 +327,20 @@ function submitEvent(ev) {
   const start=allDay?'':$('event-start').value;
   const end=allDay?'':$('event-end').value;
   if(!allDay && (!isValidTime(start)||!isValidTime(end)||start>=end)){showToast('종료 시간은 시작 시간보다 뒤여야 해요.');return;}
-  const type=$('event-repeat').value;
+  const weekdays=Array.from(document.querySelectorAll('#repeat-weekdays button[aria-pressed="true"]'),button=>Number(button.dataset.weekday));
+  const type=weekdays.length?'weekly':'none';
   const until=type==='none'?'':$('repeat-until').value;
   if(until && (!fromISO(until)||until<date)){showToast('반복 종료일은 시작일 이후여야 해요.');return;}
   const prevId=$('event-id').value;
   const record={
     id:prevId || (globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`),
     title,date,category:$('event-category').value,allDay,start,end,
-    repeat:{type,interval:type==='custom'?Math.max(1,Math.min(99,Number($('repeat-interval').value)||1)):1,
-      unit:type==='custom'?$('repeat-unit').value:undefined,until}
+    repeat:{type,interval:1,weekdays:type==='weekly'?weekdays:undefined,until}
   };
   if(!validEvent(record)){showToast('일정 정보를 다시 확인해 주세요.');return;}
   if(prevId){const i=state.events.findIndex(e=>e.id===prevId);if(i>=0)state.events[i]=record;else state.events.push(record);}
   else state.events.push(record);
-  state.filters[record.category]=true;
-  persist();closeEditor();selectDate(record.date);renderFilters();
+  persist();closeEditor();selectDate(record.date);
   showToast(prevId?'일정을 수정했어요.':'일정을 저장했어요.');
 }
 function deleteEvent() {
@@ -281,8 +353,7 @@ function deleteEvent() {
   persist();closeEditor();renderCalendar();renderDayPanel();showToast('일정을 삭제했어요.');
 }
 function init() {
-  const now=new Date();
-  $('today-label').textContent=`오늘은 ${now.getFullYear()}년 ${now.getMonth()+1}월 ${now.getDate()}일 ${['일요일','월요일','화요일','수요일','목요일','금요일','토요일'][now.getDay()]}`;
+  HolidayService.initialize().then(() => { renderCalendar(); renderDayPanel(); });
   $('memo-input').value=state.memo;
   $('memo-input').addEventListener('input',()=>{
     state.memo=$('memo-input').value;
@@ -292,19 +363,31 @@ function init() {
   });
   $('prev-month').addEventListener('click',()=>{const d=new Date(state.year,state.month-1,1);state.year=d.getFullYear();state.month=d.getMonth();state.selected=toISO(d);renderCalendar();renderDayPanel();});
   $('next-month').addEventListener('click',()=>{const d=new Date(state.year,state.month+1,1);state.year=d.getFullYear();state.month=d.getMonth();state.selected=toISO(d);renderCalendar();renderDayPanel();});
-  $('btn-repeat').addEventListener('click',()=>openEditor(null,state.selected,true));
   $('day-add').addEventListener('click',()=>openEditor(null,state.selected,false));
-  $('go-today').addEventListener('click',()=>selectDate(toISO(new Date())));
   $('dialog-close').addEventListener('click',closeEditor);
   $('dialog-cancel').addEventListener('click',closeEditor);
   $('event-form').addEventListener('submit',submitEvent);
   $('event-delete').addEventListener('click',deleteEvent);
-  $('event-repeat').addEventListener('change',updateRepeatFields);
+  document.querySelectorAll('#repeat-weekdays button').forEach(button => button.addEventListener('click',()=>{
+    button.setAttribute('aria-pressed',String(button.getAttribute('aria-pressed')!=='true'));
+    if(!document.querySelector('#repeat-weekdays button[aria-pressed="true"]')) { $('until-row').hidden=true; $('repeat-end-toggle').setAttribute('aria-expanded','false'); $('repeat-end-toggle').querySelector('span').textContent='＋'; }
+    updateRepeatFields();
+  }));
+  $('repeat-end-toggle').addEventListener('click',()=>{
+    const open=$('until-row').hidden;
+    $('until-row').hidden=!open;
+    $('repeat-end-toggle').setAttribute('aria-expanded',String(open));
+    $('repeat-end-toggle').querySelector('span').textContent=open?'−':'＋';
+  });
   $('event-allday').addEventListener('change',updateAllDay);
+  $('range-start').addEventListener('input',()=>updateTimeRange($('range-start')));
+  $('range-end').addEventListener('input',()=>updateTimeRange($('range-end')));
+  $('event-start').addEventListener('input',()=>updateTimeRange($('event-start'),'time'));
+  $('event-end').addEventListener('input',()=>updateTimeRange($('event-end'),'time'));
   $('event-dialog').addEventListener('click',ev=>{if(ev.target===$('event-dialog'))closeEditor();});
   $('win-min').addEventListener('click',()=>window.desktop?.minimize());
   $('win-max').addEventListener('click',()=>window.desktop?.maximize());
   $('win-close').addEventListener('click',()=>window.desktop?.close());
-  renderFilters();renderCalendar();renderDayPanel();
+  renderCalendar();renderDayPanel();
 }
 init();

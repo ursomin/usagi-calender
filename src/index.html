@@ -4,8 +4,9 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; font-src 'self' data:; style-src 'self'; script-src 'self'; object-src 'none'; base-uri 'none'; connect-src 'none';" />
-  <title>우사기의 하루</title>
+  <title>우사기 캘린더</title>
   <link rel="stylesheet" href="styles.css" />
+  <script defer src="holidays.js"></script>
   <script defer src="app.js"></script>
 </head>
 <body>
@@ -37,29 +38,21 @@
     </div>
 
     <header class="hero">
-      <div class="hero-landscape" aria-hidden="true"><span class="cloud cloud-one"></span><span class="cloud cloud-two"></span><span class="cloud cloud-three"></span><span class="hill hill-one"></span><span class="hill hill-two"></span><span class="bush bush-one"></span><span class="bush bush-two"></span><span class="bush bush-three"></span></div>
-      <div class="brand"><div class="brand-name">우사기의 하루</div><p class="brand-credit">by gmkim <span>·</span> 나의 캘린더</p></div>
+      <div class="hero-landscape" aria-hidden="true"><span class="hero-sun"></span><span class="cloud cloud-one"></span><span class="cloud cloud-two"></span><span class="cloud cloud-three"></span><span class="hill hill-one"></span><span class="hill hill-two"></span><span class="bush bush-one"></span><span class="bush bush-two"></span><span class="bush bush-three"></span><span class="meadow-flower flower-one"></span><span class="meadow-flower flower-two"></span><span class="meadow-flower flower-three"></span></div>
       <div class="hero-character"><span class="accent-rays" aria-hidden="true"></span><img src="assets/usagi-standing.png" alt="양손에 리본을 든 우사기" /></div>
-      <div class="today-label" id="today-label">오늘은 ...</div>
+      <img class="hero-relax" src="assets/usagi-relax.png" alt="편하게 누워 있는 우사기" />
       <img class="hero-friend" src="assets/usagi-loading.png" alt="" />
-      <button class="repeat-add" id="btn-repeat"><svg class="icon"><use href="#i-repeat" /></svg><span>반복 일정 추가</span></button>
     </header>
-
-    <nav class="filter-wrap" aria-label="카테고리 표시 필터">
-      <div class="filter-label"><svg class="icon"><use href="#i-tag" /></svg>카테고리</div>
-      <div class="category-list" id="category-filters"></div>
-      <div class="filter-hint">보고 싶은 일정만 골라보세요</div>
-    </nav>
 
     <main class="workspace">
       <section class="left-column">
         <div class="calendar-panel">
           <div class="month-toolbar">
-            <button class="month-arrow" id="prev-month" aria-label="이전 달"><svg class="icon"><use href="#i-chevron" /></svg></button>
-            <div class="month-title-wrap"><span class="month-cloud" aria-hidden="true"></span><h1 id="month-title"></h1><span class="accent-rays" aria-hidden="true"></span></div>
-            <div class="month-navigation"><button class="today-button" id="go-today" type="button">오늘</button><button class="month-arrow next" id="next-month" aria-label="다음 달"><svg class="icon"><use href="#i-chevron" /></svg></button></div>
+            <div class="calendar-year" id="calendar-year"></div>
+            <div class="month-title-wrap"><button class="month-arrow" id="prev-month" aria-label="이전 달"><svg class="icon"><use href="#i-chevron" /></svg></button><h1 id="month-title"></h1><button class="month-arrow next" id="next-month" aria-label="다음 달"><svg class="icon"><use href="#i-chevron" /></svg></button></div>
           </div>
           <div class="calendar-grid" id="calendar-grid" aria-label="월간 달력"></div>
+          <div class="holiday-status" id="holiday-status" role="status"></div>
           <div class="calendar-footnote"><svg class="icon"><use href="#i-plus" /></svg> 날짜를 두 번 누르면 일정을 추가할 수 있어요.</div>
         </div>
 
@@ -72,7 +65,7 @@
       </section>
 
       <aside class="day-panel" aria-label="선택 날짜의 일정">
-        <div class="day-heading"><svg class="icon"><use href="#i-calendar" /></svg><h2 id="selected-date-title"></h2><img src="assets/usagi-loading.png" alt="" /><span class="accent-rays" aria-hidden="true"></span></div>
+        <div class="day-heading"><svg class="icon"><use href="#i-calendar" /></svg><h2 id="selected-date-title"></h2><span class="day-mascot" aria-hidden="true"><img src="assets/usagi-loading.png" alt="" /><span class="accent-rays"></span></span></div>
         <div class="day-count"><span class="count-check" aria-hidden="true"><svg class="icon"><use href="#i-check" /></svg></span><span id="day-count-label">이날의 일정 0개</span><button type="button" class="day-add" id="day-add" aria-label="선택한 날짜에 일정 추가" title="일정 추가"><svg class="icon"><use href="#i-plus" /></svg></button></div>
         <div id="day-events" class="day-events"></div>
         <div class="day-end" aria-hidden="true"><img src="assets/usagi-standing.png" alt="" /><span>야하!</span></div>
@@ -86,13 +79,18 @@
       <input type="hidden" id="event-id" />
       <div class="form-row"><label for="event-name">일정 이름 <span class="required">*</span></label><input id="event-name" required maxlength="100" placeholder="어떤 일정이 있나요?" /></div>
       <div class="form-grid"><div class="form-row"><label for="event-date">날짜</label><input id="event-date" type="date" required /></div><div class="form-row"><label for="event-category">카테고리</label><select id="event-category"><option value="church">교회</option><option value="work">회사</option><option value="personal">개인일정</option></select></div></div>
-      <label class="allday-row"><input id="event-allday" type="checkbox" /> 하루 종일 <span>시간을 정하지 않은 일정</span></label>
-      <div class="form-grid" id="time-fields"><div class="form-row"><label for="event-start">시작 시간</label><input id="event-start" type="time" value="10:00" /></div><div class="form-row"><label for="event-end">종료 시간</label><input id="event-end" type="time" value="11:00" /></div></div>
-      <div class="form-row"><label for="event-repeat">반복 설정</label><select id="event-repeat"><option value="none">반복 안 함</option><option value="daily">매일</option><option value="weekly">매주</option><option value="monthly">매월</option><option value="yearly">매년</option><option value="custom">직접 설정</option></select></div>
-      <div class="repeat-details" id="repeat-details" hidden>
-        <div class="form-grid"><div class="form-row"><label for="repeat-interval">반복 간격</label><input id="repeat-interval" type="number" min="1" max="99" value="1" /></div><div class="form-row"><label for="repeat-unit">반복 단위</label><select id="repeat-unit"><option value="daily">일마다</option><option value="weekly">주마다</option><option value="monthly">개월마다</option><option value="yearly">년마다</option></select></div></div>
+      <label class="allday-row"><input id="event-allday" type="checkbox" /> 하루 종일</label>
+      <div class="time-range" id="time-fields">
+        <div class="time-range-heading"><div class="time-readouts"><input id="event-start" type="time" step="600" value="10:00" aria-label="시작 시간 직접 입력" /><span>–</span><input id="event-end" type="time" step="600" value="11:00" aria-label="종료 시간 직접 입력" /></div><span>10분 단위</span></div>
+        <div class="time-range-track"><div class="time-range-fill" id="time-range-fill"></div><input id="range-start" type="range" min="0" max="1430" step="10" value="600" aria-label="시작 시간 슬라이더" /><input id="range-end" type="range" min="0" max="1430" step="10" value="660" aria-label="종료 시간 슬라이더" /></div>
+        <div class="time-range-limits"><span>00:00</span><span>23:50</span></div>
       </div>
-      <div class="form-row repeat-until" id="until-row" hidden><label for="repeat-until">반복 종료일 (선택)</label><input id="repeat-until" type="date" /><p>종료일을 비워두면 계속 반복해요.</p></div>
+      <div class="repeat-card">
+        <div class="repeat-main-row"><span>반복</span><strong class="repeat-state" id="repeat-state">안 함</strong></div>
+        <div class="repeat-weekdays" id="repeat-weekdays" aria-label="반복할 요일"><button type="button" data-weekday="0" aria-pressed="false">일</button><button type="button" data-weekday="1" aria-pressed="false">월</button><button type="button" data-weekday="2" aria-pressed="false">화</button><button type="button" data-weekday="3" aria-pressed="false">수</button><button type="button" data-weekday="4" aria-pressed="false">목</button><button type="button" data-weekday="5" aria-pressed="false">금</button><button type="button" data-weekday="6" aria-pressed="false">토</button></div>
+        <button type="button" class="repeat-end-toggle" id="repeat-end-toggle" aria-expanded="false" hidden>종료일 설정 <span>＋</span></button>
+        <div class="form-row repeat-until" id="until-row" hidden><label for="repeat-until">반복 종료일</label><input id="repeat-until" type="date" /></div>
+      </div>
       <div class="dialog-actions"><button type="button" class="delete-btn" id="event-delete" hidden><svg class="icon"><use href="#i-trash" /></svg> 삭제</button><button type="button" class="cancel-btn" id="dialog-cancel">취소</button><button type="submit" class="save-btn">일정 저장</button></div>
     </form>
   </dialog>

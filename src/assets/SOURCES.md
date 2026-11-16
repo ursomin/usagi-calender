@@ -11,6 +11,8 @@ Original artwork downloaded from the official Chiikawa anime website on 2026-11-
 
 Additional original assets:
 
+- `usagi-relax.png`: https://r2.chiikawawallpaper.com/wallpaper/20260914/46aac4253d790820f6ad441b20ae294c.png — discovered via https://chiikawawallpaper.com/ja (third-party image collection, not the official anime website). Original transparent PNG retained unmodified.
+
 - `usagi-loading.png`: https://www.anime-chiikawa.jp/images/loading/usagi.png
 - `usagi-shout.png`: https://www.anime-chiikawa.jp/images/loading/usagi_shout1.png (currently unused)
 - `usagi-shout-alt.png`: https://www.anime-chiikawa.jp/images/loading/usagi_shout2.png (currently unused)
